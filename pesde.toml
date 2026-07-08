@@ -6,3 +6,6 @@ workspace_members = ["packages/*"]
 
 [target]
 environment = "roblox"
+
+[indices]
+default = "https://github.com/pesde-pkg/index"
