@@ -1,0 +1,15 @@
+name = "chief/core"
+version = "0.1.0-canary.1"
+description = "The core of Chief, a strictly and fully typed Luau module framework for Roblox. It loads modules, runs the Init/Start boot barrier, and fires hooks for extensions — nothing else. Roblox event lifecycles, dependency injection, and everything domain-specific live in extensions."
+authors = ["ryancundiff"]
+repository = "https://github.com/ryancundiff/chief"
+license = "MIT"
+includes = ["src/*", "LICENSE", "README.md", "pesde.toml"]
+
+[target]
+environment = "roblox"
+build_files = ["src"]
+lib = "src/init.luau"
+
+[indices]
+default = "https://github.com/pesde-pkg/index"

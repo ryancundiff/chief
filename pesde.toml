@@ -1,0 +1,8 @@
+name = "chief/root"
+version = "0.0.0"
+private = true
+
+workspace_members = ["packages/*"]
+
+[target]
+environment = "roblox"

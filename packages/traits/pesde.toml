@@ -1,0 +1,18 @@
+name = "chief/traits"
+version = "0.1.0-canary.1"
+description = "The Traits extension for Chief: binds behavior to Roblox instances through CollectionService tags."
+authors = ["ryancundiff"]
+repository = "https://github.com/ryancundiff/chief"
+license = "MIT"
+includes = ["src/*", "LICENSE", "README.md", "pesde.toml"]
+
+[target]
+environment = "roblox"
+build_files = ["src"]
+lib = "src/init.luau"
+
+[indices]
+default = "https://github.com/pesde-pkg/index"
+
+[dependencies]
+core = { workspace = "chief/core", version = "^" }

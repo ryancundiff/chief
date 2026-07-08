@@ -1,0 +1,5 @@
+quote_style = "AutoPreferSingle"
+space_after_function_names = "Definitions"
+
+[sort_requires]
+enabled = true
