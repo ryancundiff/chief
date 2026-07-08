@@ -1,4 +1,5 @@
-roblox_packages
+roblox_packages/
 pesde.lock
 *.rbxl
+__pycache__/
 CLAUDE.md
