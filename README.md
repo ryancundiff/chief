@@ -1,6 +1,8 @@
 # Chief
 
-A strictly and fully typed Luau module framework for Roblox, inspired by [Sleitnick's Knit](https://github.com/Sleitnick/Knit). Modules are much like Knit's services and controllers: each has an `Init` and `Start` lifecycle, and more lifecycles can be added with the Lifecycles extension.
+[![CI](https://github.com/ryancundiff/chief/actions/workflows/ci.yml/badge.svg)](https://github.com/ryancundiff/chief/actions/workflows/ci.yml)
+
+A strictly and fully typed, tested Luau module framework for Roblox, inspired by [Sleitnick's Knit](https://github.com/Sleitnick/Knit). Modules are much like Knit's services and controllers: each has an `Init` and `Start` lifecycle, and more lifecycles can be added with the Lifecycles extension.
 
 The core is intentionally small — it loads modules, runs the Init/Start boot barrier, and fires hooks. Everything else (Roblox event lifecycles, dependency injection, etc.) lives in extensions that attach to those hooks. The core has no knowledge of RunService events, players, or dependency graphs.
 
@@ -95,7 +97,8 @@ See the [core README](packages/core) for the full extension contract.
 This repository is a pesde workspace (`workspace_members = ["packages/*"]`).
 
 - **Format**: [StyLua](https://github.com/JohnnyMorganz/StyLua) (`stylua.toml`)
-- **Lint**: [selene](https://github.com/Kampfkarren/selene) (`selene.toml`, `std = "roblox"`)
+- **Lint**: [selene](https://github.com/Kampfkarren/selene) (`selene.toml`, `std = "roblox+testez"`)
+- **Test**: [TestEZ](https://github.com/Roblox/testez) specs under `tests/`, executed in real Roblox by CI via the [Open Cloud Luau Execution API](https://create.roblox.com/docs/cloud/reference/LuauExecutionSessionTask)
 - `roblox_packages/` and `pesde.lock` are generated and gitignored — never edit them.
 
 ## License

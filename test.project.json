@@ -1,0 +1,21 @@
+{
+  "name": "chief-tests",
+  "tree": {
+    "$className": "DataModel",
+
+    "ServerStorage": {
+      "ChiefTests": {
+        "$className": "Folder",
+        "Packages": {
+          "$path": "packages"
+        },
+        "RobloxPackages": {
+          "$path": "roblox_packages"
+        },
+        "Tests": {
+          "$path": "tests"
+        }
+      }
+    }
+  }
+}

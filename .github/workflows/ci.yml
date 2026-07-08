@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  static-checks:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install tools with Rokit
+        uses: CompeyDev/setup-rokit@v0.2.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Lint with selene
+        run: selene packages tests tasks
+      - name: Check formatting with StyLua
+        run: stylua --check packages tests tasks
+
+  tests:
+    name: Run tests via Open Cloud
+    runs-on: ubuntu-latest
+    concurrency:
+      group: luau-execution
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install tools with Rokit
+        uses: CompeyDev/setup-rokit@v0.2.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install packages
+        run: pesde install
+      - name: Build test place
+        run: rojo build test.project.json --output test-place.rbxl
+      - name: Upload place and run tests
+        run: python3 scripts/upload_and_run_task.py test-place.rbxl tasks/run-tests.luau
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_TEST_UNIVERSE_ID }}
+          ROBLOX_PLACE_ID: ${{ vars.ROBLOX_TEST_PLACE_ID }}
