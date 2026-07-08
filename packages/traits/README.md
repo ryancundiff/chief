@@ -135,7 +135,7 @@ The fully-typed bound object derived from an info contract's type: `Instance` re
 Lifecycle methods receive a per-instance object:
 
 - `self.Instance` — the tagged instance.
-- `self.Attributes` — declared attribute values, kept in sync as they change.
+- `self.Attributes` — a live, two-way view of the declared attribute values. Reads stay in sync as attributes change; writes validate against the contract and set the real attribute on the instance — `self.Attributes.OpenAngle = 45` behaves exactly like `self.Instance:SetAttribute('OpenAngle', 45)` (including firing `AttributeChanged`). Writing an undeclared name, a `nil`, or a wrong-typed value errors. Iteration works as normal.
 - `self.Bin` — a cleanup container. `Bin:Add(item)` accepts a connection (disconnected), instance (destroyed), thread (cancelled), or function (called); everything is cleaned in reverse order automatically on unbind.
 - One field per declared child (e.g. `self.Prompt`).
 - Everything on the trait module itself, via the metatable.
@@ -146,7 +146,7 @@ Type it by intersection: `type Self = typeof(Door) & Traits.BoundOf<typeof(Door.
 
 - `BadArgument:` — thrown when `new`, `info`, `attribute`, `child`, `get`, `getAll`, or `Bin:Add` receive the wrong shape (including reserved child names like `Instance`, `Bin`, `Init`, and modules passed to `new` without an `Info` contract).
 - `BadInstance:` (warning) — a tagged instance failed the contract; names the failed requirement.
-- `BadAttribute:` (warning) — a declared attribute changed to a value of the wrong type; the change is ignored.
+- `BadAttribute:` — thrown when writing to `self.Attributes` with an undeclared name, a `nil`, or a value of the wrong type. Also warned (not thrown) when an attribute changes externally to a wrong-typed value; that change is ignored.
 - `TraitError:` — a trait's `Init` or `Destroy` errored (or yielded — both must be synchronous); reported with traceback, cleanup still runs.
 - `DuplicateTrait:` (warning) — the same trait module was wired twice (e.g. added to two Chief instances).
 
