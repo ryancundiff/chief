@@ -12,6 +12,8 @@ local Chief = require('./roblox_packages/core')
 
 	When an instance gains the trait's tag (and satisfies the declared instance class, attributes, and children), the extension constructs a bound object and runs its lifecycle: `Init` (synchronous), then `Start` (spawned, cancelled automatically on unbind). `Destroy` runs when the tag is removed or the instance is destroyed, after which the bound object's `Bin` is emptied automatically.
 
+	`self.Attributes` is a live, two-way view of the declared attributes: it stays in sync as they change on the instance, and writing to it validates the value against the contract and sets the real attribute (so `self.Attributes.OpenAngle = 45` behaves exactly like `self.Instance:SetAttribute('OpenAngle', 45)`).
+
 	Watching begins at `PostStart` -- after the whole boot barrier -- so every module is initialized before the first trait binds, and trait bodies can safely require and use any Chief module.
 
 	How to set up Traits:
@@ -292,7 +294,7 @@ local function wireTrait (traitName: string, trait: Trait)
 		end
 
 		-- Validate attributes; write defaults back so they show in Studio.
-		local attributes: { [string]: any } = {}
+		local attributeValues: { [string]: any } = {}
 
 		for attributeName, attribute in info.Attributes do
 			local value = instance:GetAttribute(attributeName)
@@ -324,8 +326,45 @@ local function wireTrait (traitName: string, trait: Trait)
 				return
 			end
 
-			attributes[attributeName] = value
+			attributeValues[attributeName] = value
 		end
+
+		-- Attributes is a proxy over the value store: writes to a plain table would stay local and silently diverge from the instance. The facade must stay empty so every write reaches __newindex (it only fires for keys the table lacks), which validates the value against the contract, updates the store immediately (AttributeChanged can be deferred, so a read right after a write must not see a stale value), and sets the real attribute. __iter makes generalized iteration see the store.
+		local attributes = setmetatable({}, {
+			__index = attributeValues,
+			__newindex = function (_, attributeName: string, value: any)
+				local attribute = info.Attributes[attributeName]
+
+				if attribute == nil then
+					error(
+						`BadAttribute: Cannot set attribute '{attributeName}' on {instance:GetFullName()} (trait '{traitName}' does not declare it)`,
+						2
+					)
+				end
+
+				if value == nil then
+					error(
+						`BadAttribute: Cannot remove attribute '{attributeName}' on {instance:GetFullName()} (declared attributes cannot be nil; call Instance:SetAttribute to remove it anyway)`,
+						2
+					)
+				end
+
+				if typeof(value) ~= attribute.Kind then
+					error(
+						`BadAttribute: Cannot set attribute '{attributeName}' on {instance:GetFullName()} (expected {attribute.Kind}, got {typeof(
+							value
+						)})`,
+						2
+					)
+				end
+
+				attributeValues[attributeName] = value
+				instance:SetAttribute(attributeName, value)
+			end,
+			__iter = function ()
+				return next, attributeValues
+			end,
+		})
 
 		local bin = Bin.new()
 
@@ -353,7 +392,7 @@ local function wireTrait (traitName: string, trait: Trait)
 			end
 		end
 
-		-- Keep Attributes in sync and dispatch the optional AttributeChanged method. Wired after Init so handlers never see a half-bound object.
+		-- Keep the attribute store in sync and dispatch the optional AttributeChanged method. Writes go to the store directly -- going through the proxy would call SetAttribute again for a value the instance already holds. Wired after Init so handlers never see a half-bound object.
 		bin:Add(instance.AttributeChanged:Connect(function (attributeName: string)
 			local attribute = info.Attributes[attributeName]
 
@@ -373,7 +412,7 @@ local function wireTrait (traitName: string, trait: Trait)
 				return
 			end
 
-			bound.Attributes[attributeName] = value
+			attributeValues[attributeName] = value
 
 			local attributeChanged = trait.AttributeChanged
 
@@ -854,6 +893,8 @@ export type Bin = setmetatable<{
 
 --[=[
 	The per-instance object a trait's lifecycle methods receive as `self`, untyped. Fields declared in the contract's `Children` are injected under their own names; trait methods and data are reachable through the metatable.
+
+	`Attributes` is a two-way proxy: reads see the latest declared attribute values, and writes validate against the contract and set the real attribute on the instance.
 
 	Prefer `Traits.BoundOf<typeof(YourTrait.Info)>`, which derives the exact shape from the contract; this loose type remains for contracts that cannot be declared inline.
 ]=]
