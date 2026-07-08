@@ -12,6 +12,8 @@ local Chief = require('./roblox_packages/core')
 
 	When an instance gains the trait's tag (and satisfies the declared instance class, attributes, and children), the extension constructs a bound object and runs its lifecycle: `Init` (synchronous), then `Start` (spawned, cancelled automatically on unbind). `Destroy` runs when the tag is removed or the instance is destroyed, after which the bound object's `Bin` is emptied automatically.
 
+	`self.Attributes` is a live, two-way view of the declared attributes: it stays in sync as they change on the instance, and writing to it validates the value against the contract and sets the real attribute (so `self.Attributes.OpenAngle = 45` behaves exactly like `self.Instance:SetAttribute('OpenAngle', 45)`).
+
 	Watching begins at `PostStart` -- after the whole boot barrier -- so every module is initialized before the first trait binds, and trait bodies can safely require and use any Chief module.
 
 	How to set up Traits:
@@ -44,10 +46,12 @@ local Chief = require('./roblox_packages/core')
 		end))
 	end
 
-	type Self = typeof(Door) & Traits.Bound & { Prompt: ProximityPrompt }
+	type Self = typeof(Door) & Traits.BoundOf<typeof(Door.Info)>
 
 	return Door
 	```
+
+	`BoundOf` derives the whole bound object's type from the `Info` contract at the type level (through Luau type functions, which need the new type solver): `self.Instance` is a `BasePart`, `self.Attributes.OpenAngle` a `number`, and `self.Prompt` a `ProximityPrompt` -- no manual annotations, and a malformed contract is a type error at the `Traits.info` call itself.
 ]=]
 local Traits = {}
 
@@ -290,7 +294,7 @@ local function wireTrait (traitName: string, trait: Trait)
 		end
 
 		-- Validate attributes; write defaults back so they show in Studio.
-		local attributes: { [string]: any } = {}
+		local attributeValues: { [string]: any } = {}
 
 		for attributeName, attribute in info.Attributes do
 			local value = instance:GetAttribute(attributeName)
@@ -322,8 +326,45 @@ local function wireTrait (traitName: string, trait: Trait)
 				return
 			end
 
-			attributes[attributeName] = value
+			attributeValues[attributeName] = value
 		end
+
+		-- Attributes is a proxy over the value store: writes to a plain table would stay local and silently diverge from the instance. The facade must stay empty so every write reaches __newindex (it only fires for keys the table lacks), which validates the value against the contract, updates the store immediately (AttributeChanged can be deferred, so a read right after a write must not see a stale value), and sets the real attribute. __iter makes generalized iteration see the store.
+		local attributes = setmetatable({}, {
+			__index = attributeValues,
+			__newindex = function (_, attributeName: string, value: any)
+				local attribute = info.Attributes[attributeName]
+
+				if attribute == nil then
+					error(
+						`BadAttribute: Cannot set attribute '{attributeName}' on {instance:GetFullName()} (trait '{traitName}' does not declare it)`,
+						2
+					)
+				end
+
+				if value == nil then
+					error(
+						`BadAttribute: Cannot remove attribute '{attributeName}' on {instance:GetFullName()} (declared attributes cannot be nil; call Instance:SetAttribute to remove it anyway)`,
+						2
+					)
+				end
+
+				if typeof(value) ~= attribute.Kind then
+					error(
+						`BadAttribute: Cannot set attribute '{attributeName}' on {instance:GetFullName()} (expected {attribute.Kind}, got {typeof(
+							value
+						)})`,
+						2
+					)
+				end
+
+				attributeValues[attributeName] = value
+				instance:SetAttribute(attributeName, value)
+			end,
+			__iter = function ()
+				return next, attributeValues
+			end,
+		})
 
 		local bin = Bin.new()
 
@@ -351,7 +392,7 @@ local function wireTrait (traitName: string, trait: Trait)
 			end
 		end
 
-		-- Keep Attributes in sync and dispatch the optional AttributeChanged method. Wired after Init so handlers never see a half-bound object.
+		-- Keep the attribute store in sync and dispatch the optional AttributeChanged method. Writes go to the store directly -- going through the proxy would call SetAttribute again for a value the instance already holds. Wired after Init so handlers never see a half-bound object.
 		bin:Add(instance.AttributeChanged:Connect(function (attributeName: string)
 			local attribute = info.Attributes[attributeName]
 
@@ -371,7 +412,7 @@ local function wireTrait (traitName: string, trait: Trait)
 				return
 			end
 
-			bound.Attributes[attributeName] = value
+			attributeValues[attributeName] = value
 
 			local attributeChanged = trait.AttributeChanged
 
@@ -456,38 +497,44 @@ end
 	- `Attributes` -- Map of attribute name to `Traits.attribute` marker.
 	- `Children` -- Map of child name to `Traits.child` marker. The bound object gains a field of the same name holding the resolved child.
 
+	The literal shape of `properties` is preserved and validated at the type level, so `Traits.BoundOf<typeof(YourTrait.Info)>` can derive a fully-typed bound object from it. Declare the contract inline (literal keys, `Traits.attribute`/`Traits.child` markers) for that to work.
+
 	@param properties InfoProperties
-	@return Info
+	@return InfoOf<typeof(properties)>
 
 	@error BadArgument -- Thrown when `properties` is not a valid `InfoProperties`.
 ]=]
-function Traits.info (properties: InfoProperties): Info
+function Traits.info <T>(properties: T | InfoProperties): ToInfo<T>
+	local typedProperties: InfoProperties = properties :: any
+
 	assert(
-		typeof(properties) == 'table',
-		`BadArgument: Bad argument #1 for info (expected table, got {typeof(properties)})`
+		typeof(typedProperties) == 'table',
+		`BadArgument: Bad argument #1 for info (expected table, got {typeof(typedProperties)})`
 	)
 
 	assert(
-		typeof(properties.Tag) == 'string' and #properties.Tag > 0,
-		`BadArgument: Bad argument #1 for info (Tag: expected non-empty string, got {typeof(properties.Tag)})`
+		typeof(typedProperties.Tag) == 'string' and #typedProperties.Tag > 0,
+		`BadArgument: Bad argument #1 for info (Tag: expected non-empty string, got {typeof(typedProperties.Tag)})`
 	)
 
 	assert(
-		properties.InstanceIs == nil or typeof(properties.InstanceIs) == 'string',
-		`BadArgument: Bad argument #1 for info (InstanceIs: expected string or nil, got {typeof(properties.InstanceIs)})`
+		typedProperties.InstanceIs == nil or typeof(typedProperties.InstanceIs) == 'string',
+		`BadArgument: Bad argument #1 for info (InstanceIs: expected string or nil, got {typeof(
+			typedProperties.InstanceIs
+		)})`
 	)
 
 	local attributes: { [string]: Attribute } = {}
 
-	if properties.Attributes ~= nil then
+	if typedProperties.Attributes ~= nil then
 		assert(
-			typeof(properties.Attributes) == 'table',
+			typeof(typedProperties.Attributes) == 'table',
 			`BadArgument: Bad argument #1 for info (Attributes: expected table or nil, got {typeof(
-				properties.Attributes
+				typedProperties.Attributes
 			)})`
 		)
 
-		for name, attribute in properties.Attributes do
+		for name, attribute in typedProperties.Attributes do
 			assert(
 				typeof(name) == 'string',
 				`BadArgument: Bad argument #1 for info (Attributes: expected string keys, got {typeof(name)})`
@@ -506,13 +553,15 @@ function Traits.info (properties: InfoProperties): Info
 
 	local children: { [string]: Child } = {}
 
-	if properties.Children ~= nil then
+	if typedProperties.Children ~= nil then
 		assert(
-			typeof(properties.Children) == 'table',
-			`BadArgument: Bad argument #1 for info (Children: expected table or nil, got {typeof(properties.Children)})`
+			typeof(typedProperties.Children) == 'table',
+			`BadArgument: Bad argument #1 for info (Children: expected table or nil, got {typeof(
+				typedProperties.Children
+			)})`
 		)
 
-		for name, child in properties.Children do
+		for name, child in typedProperties.Children do
 			assert(
 				typeof(name) == 'string',
 				`BadArgument: Bad argument #1 for info (Children: expected string keys, got {typeof(name)})`
@@ -535,51 +584,60 @@ function Traits.info (properties: InfoProperties): Info
 	end
 
 	local info = {
-		Tag = properties.Tag,
-		InstanceIs = properties.InstanceIs or 'Instance',
+		Tag = typedProperties.Tag,
+		InstanceIs = typedProperties.InstanceIs or 'Instance',
 		Attributes = attributes,
 		Children = children,
 	} :: any
 
 	info[INFO_MARKER] = true
 
-	return table.freeze(info) :: Info
+	return table.freeze(info) :: any
 end
 
 --[=[
 	Declare a required attribute inside `Traits.info`. With a `default`, the attribute is optional and the default is written back to instances that lack it (so it shows in Studio); without one, instances missing the attribute fail the contract.
 
+	The kind literal is preserved at the type level, so the derived bound object types the attribute's value (eg. 'number' becomes `number`) and `default` is checked against the kind at the call site.
+
 	@param kind AttributeKind -- The typeof() name the attribute must have, eg. 'number'.
-	@param default any? -- Optional default value; must match `kind`.
+	@param default AttributeValue<typeof(kind)>? -- Optional default value; must match `kind`.
 	@return Attribute
 
 	@error BadArgument -- Thrown when `kind` is not an `AttributeKind`, or `default` does not match it.
 ]=]
-function Traits.attribute (kind: AttributeKind, default: any?): Attribute
+function Traits.attribute <K>(
+	kind: K | AttributeKind,
+	default: ToAttributeValue<K>?
+): { Kind: K, Default: ToAttributeValue<K>? }
+	local kindName: string = kind :: any
+
 	assert(
-		typeof(kind) == 'string' and ATTRIBUTE_KINDS[kind] == true,
-		`BadArgument: Bad argument #1 for attribute (expected AttributeKind, got {if typeof(kind) == 'string'
-			then kind
-			else typeof(kind)})`
+		typeof(kindName) == 'string' and ATTRIBUTE_KINDS[kindName] == true,
+		`BadArgument: Bad argument #1 for attribute (expected AttributeKind, got {if typeof(kindName) == 'string'
+			then kindName
+			else typeof(kindName)})`
 	)
 
 	assert(
-		default == nil or typeof(default) == kind,
-		`BadArgument: Bad argument #2 for attribute (expected {kind} or nil, got {typeof(default)})`
+		default == nil or typeof(default) == kindName,
+		`BadArgument: Bad argument #2 for attribute (expected {kindName} or nil, got {typeof(default)})`
 	)
 
 	local attribute = {
-		Kind = kind,
+		Kind = kindName,
 		Default = default,
 	} :: any
 
 	attribute[ATTRIBUTE_MARKER] = true
 
-	return table.freeze(attribute) :: Attribute
+	return table.freeze(attribute) :: any
 end
 
 --[=[
 	Declare a required child inside `Traits.info`. The key it is assigned to in `Children` is both the child's expected `Name` and the field the resolved child is injected under on the bound object.
+
+	The class name literal is preserved at the type level, so the derived bound object types the injected field (eg. 'ProximityPrompt' becomes `ProximityPrompt`). Class names outside `InstanceClassName` are accepted and fall back to `Instance`.
 
 	@param className string -- Class (or superclass) the child must be.
 	@param options ChildOptions? -- `Wait` (seconds) waits for the child to appear (eg. under StreamingEnabled) instead of failing immediately.
@@ -587,10 +645,12 @@ end
 
 	@error BadArgument -- Thrown when `className` is not a non-empty string, or `options` is not a `ChildOptions` or nil.
 ]=]
-function Traits.child (className: string, options: ChildOptions?): Child
+function Traits.child <C>(className: C | InstanceClassName, options: ChildOptions?): { ClassName: C, Wait: number? }
+	local classNameString: string = className :: any
+
 	assert(
-		typeof(className) == 'string' and #className > 0,
-		`BadArgument: Bad argument #1 for child (expected non-empty string, got {typeof(className)})`
+		typeof(classNameString) == 'string' and #classNameString > 0,
+		`BadArgument: Bad argument #1 for child (expected non-empty string, got {typeof(classNameString)})`
 	)
 
 	if options ~= nil then
@@ -606,13 +666,13 @@ function Traits.child (className: string, options: ChildOptions?): Child
 	end
 
 	local child = {
-		ClassName = className,
+		ClassName = classNameString,
 		Wait = if options ~= nil then options.Wait else nil,
 	} :: any
 
 	child[CHILD_MARKER] = true
 
-	return table.freeze(child) :: Child
+	return table.freeze(child) :: any
 end
 
 --[=[
@@ -684,13 +744,15 @@ end
 --[=[
 	Get the bound object a trait has attached to an instance, or nil when the trait is not (or not yet) bound to it.
 
+	The result is fully typed: the bound object's shape is derived from the trait's `Info` contract, and the trait's own methods and fields are reachable on it.
+
 	@param instance Instance
 	@param trait Trait -- The trait module table.
-	@return Bound?
+	@return (BoundOf<typeof(trait.Info)> & typeof(trait))?
 
 	@error BadArgument -- Thrown when `instance` is not an Instance or `trait` is not a table.
 ]=]
-function Traits.get (instance: Instance, trait: Trait): Bound?
+function Traits.get <T>(instance: Instance, trait: T): (ToBound<index<T, 'Info'>> & T)?
 	assert(
 		typeof(instance) == 'Instance',
 		`BadArgument: Bad argument #1 for get (expected Instance, got {typeof(instance)})`
@@ -698,28 +760,30 @@ function Traits.get (instance: Instance, trait: Trait): Bound?
 
 	assert(typeof(trait) == 'table', `BadArgument: Bad argument #2 for get (expected table, got {typeof(trait)})`)
 
-	local boundOf = boundByTrait[trait]
+	local boundOf = boundByTrait[trait :: any]
 
 	if boundOf == nil then
 		return nil
 	end
 
-	return boundOf[instance]
+	return boundOf[instance] :: any
 end
 
 --[=[
 	Get every bound object of a trait, in no particular order.
 
+	The results are fully typed: each bound object's shape is derived from the trait's `Info` contract, and the trait's own methods and fields are reachable on it.
+
 	@param trait Trait -- The trait module table.
-	@return { Bound }
+	@return { BoundOf<typeof(trait.Info)> & typeof(trait) }
 
 	@error BadArgument -- Thrown when `trait` is not a table.
 ]=]
-function Traits.getAll (trait: Trait): { Bound }
+function Traits.getAll <T>(trait: T): { ToBound<index<T, 'Info'>> & T }
 	assert(typeof(trait) == 'table', `BadArgument: Bad argument #1 for getAll (expected table, got {typeof(trait)})`)
 
 	local all: { Bound } = {}
-	local boundOf = boundByTrait[trait]
+	local boundOf = boundByTrait[trait :: any]
 
 	if boundOf ~= nil then
 		for _, bound in boundOf do
@@ -727,7 +791,7 @@ function Traits.getAll (trait: Trait): { Bound }
 		end
 	end
 
-	return all
+	return all :: any
 end
 
 --[[ TYPES ]]
@@ -779,11 +843,11 @@ export type ChildOptions = {
 }
 
 --[=[
-	Properties accepted by `Traits.info`.
+	Properties accepted by `Traits.info`. `InstanceIs` offers the class names in `InstanceClassName` for autocomplete, but any class name string is accepted (unknown ones fall back to `Instance` in the derived types).
 ]=]
 export type InfoProperties = {
 	Tag: string,
-	InstanceIs: string?,
+	InstanceIs: InstanceClassName?,
 	Attributes: { [string]: Attribute }?,
 	Children: { [string]: Child }?,
 }
@@ -828,10 +892,11 @@ export type Bin = setmetatable<{
 }, typeof(binMt)>
 
 --[=[
-	The per-instance object a trait's lifecycle methods receive as `self`. Fields declared in the contract's `Children` are injected under their own names; trait methods and data are reachable through the metatable. Combine with your trait's type for full typing:
-	```
-	type Self = typeof(Door) & Traits.Bound & { Prompt: ProximityPrompt }
-	```
+	The per-instance object a trait's lifecycle methods receive as `self`, untyped. Fields declared in the contract's `Children` are injected under their own names; trait methods and data are reachable through the metatable.
+
+	`Attributes` is a two-way proxy: reads see the latest declared attribute values, and writes validate against the contract and set the real attribute on the instance.
+
+	Prefer `Traits.BoundOf<typeof(YourTrait.Info)>`, which derives the exact shape from the contract; this loose type remains for contracts that cannot be declared inline.
 ]=]
 export type Bound = {
 	Instance: Instance,
@@ -839,5 +904,478 @@ export type Bound = {
 	Bin: Bin,
 	[any]: any,
 }
+
+--[[ TYPE-LEVEL DERIVATION ]]
+
+--[=[
+	Maps every attribute kind name to the Luau type an attribute of that kind holds. Must mirror ATTRIBUTE_KINDS.
+]=]
+type AttributeValueTypes = {
+	string: string,
+	number: number,
+	boolean: boolean,
+	UDim: UDim,
+	UDim2: UDim2,
+	BrickColor: BrickColor,
+	Color3: Color3,
+	Vector2: Vector2,
+	Vector3: Vector3,
+	CFrame: CFrame,
+	NumberSequence: NumberSequence,
+	ColorSequence: ColorSequence,
+	NumberRange: NumberRange,
+	Rect: Rect,
+	Font: Font,
+}
+
+--[=[
+	Maps common class names to their Instance types, so `InstanceIs` and `Traits.child` class names resolve to real types. Class names outside this map are still valid contracts -- they just derive plain `Instance`. Every class, past and future, works at runtime; typing out all of them is not feasible.
+]=]
+type InstanceTypes = {
+	Instance: Instance,
+
+	-- World.
+	PVInstance: PVInstance,
+	BasePart: BasePart,
+	Part: Part,
+	MeshPart: MeshPart,
+	UnionOperation: UnionOperation,
+	WedgePart: WedgePart,
+	CornerWedgePart: CornerWedgePart,
+	TrussPart: TrussPart,
+	Seat: Seat,
+	VehicleSeat: VehicleSeat,
+	SpawnLocation: SpawnLocation,
+	Terrain: Terrain,
+	Model: Model,
+	WorldModel: WorldModel,
+	Actor: Actor,
+	Attachment: Attachment,
+	Bone: Bone,
+	Accessory: Accessory,
+	Tool: Tool,
+	Folder: Folder,
+	Configuration: Configuration,
+	Camera: Camera,
+
+	-- Appearance and effects.
+	Decal: Decal,
+	Texture: Texture,
+	SurfaceAppearance: SurfaceAppearance,
+	ParticleEmitter: ParticleEmitter,
+	Beam: Beam,
+	Trail: Trail,
+	Smoke: Smoke,
+	Fire: Fire,
+	Sparkles: Sparkles,
+	Explosion: Explosion,
+	Highlight: Highlight,
+	PointLight: PointLight,
+	SpotLight: SpotLight,
+	SurfaceLight: SurfaceLight,
+
+	-- Joints and constraints.
+	Weld: Weld,
+	Motor6D: Motor6D,
+	WeldConstraint: WeldConstraint,
+	RigidConstraint: RigidConstraint,
+	HingeConstraint: HingeConstraint,
+	BallSocketConstraint: BallSocketConstraint,
+	RodConstraint: RodConstraint,
+	RopeConstraint: RopeConstraint,
+	SpringConstraint: SpringConstraint,
+	PrismaticConstraint: PrismaticConstraint,
+	CylindricalConstraint: CylindricalConstraint,
+	UniversalConstraint: UniversalConstraint,
+	NoCollisionConstraint: NoCollisionConstraint,
+	AlignPosition: AlignPosition,
+	AlignOrientation: AlignOrientation,
+	VectorForce: VectorForce,
+	LinearVelocity: LinearVelocity,
+	AngularVelocity: AngularVelocity,
+	Torque: Torque,
+	LineForce: LineForce,
+
+	-- Interaction.
+	ProximityPrompt: ProximityPrompt,
+	ClickDetector: ClickDetector,
+	DragDetector: DragDetector,
+	Dialog: Dialog,
+	DialogChoice: DialogChoice,
+
+	-- Characters and animation.
+	Humanoid: Humanoid,
+	HumanoidDescription: HumanoidDescription,
+	Animation: Animation,
+	AnimationController: AnimationController,
+	Animator: Animator,
+
+	-- Sound.
+	Sound: Sound,
+	SoundGroup: SoundGroup,
+	AudioPlayer: AudioPlayer,
+	AudioEmitter: AudioEmitter,
+	AudioListener: AudioListener,
+	AudioFader: AudioFader,
+	AudioDeviceOutput: AudioDeviceOutput,
+	AudioDeviceInput: AudioDeviceInput,
+	AudioEqualizer: AudioEqualizer,
+	AudioReverb: AudioReverb,
+	AudioCompressor: AudioCompressor,
+	AudioEcho: AudioEcho,
+	AudioDistortion: AudioDistortion,
+
+	-- Gui.
+	ScreenGui: ScreenGui,
+	SurfaceGui: SurfaceGui,
+	BillboardGui: BillboardGui,
+	CanvasGroup: CanvasGroup,
+	Frame: Frame,
+	ScrollingFrame: ScrollingFrame,
+	ImageLabel: ImageLabel,
+	ImageButton: ImageButton,
+	TextLabel: TextLabel,
+	TextButton: TextButton,
+	TextBox: TextBox,
+	VideoFrame: VideoFrame,
+	ViewportFrame: ViewportFrame,
+	UIListLayout: UIListLayout,
+	UIGridLayout: UIGridLayout,
+	UIPageLayout: UIPageLayout,
+	UITableLayout: UITableLayout,
+	UIPadding: UIPadding,
+	UICorner: UICorner,
+	UIStroke: UIStroke,
+	UIGradient: UIGradient,
+	UIScale: UIScale,
+	UISizeConstraint: UISizeConstraint,
+	UITextSizeConstraint: UITextSizeConstraint,
+	UIAspectRatioConstraint: UIAspectRatioConstraint,
+	UIFlexItem: UIFlexItem,
+	UIDragDetector: UIDragDetector,
+
+	-- Events and values.
+	RemoteEvent: RemoteEvent,
+	UnreliableRemoteEvent: UnreliableRemoteEvent,
+	RemoteFunction: RemoteFunction,
+	BindableEvent: BindableEvent,
+	BindableFunction: BindableFunction,
+	StringValue: StringValue,
+	NumberValue: NumberValue,
+	IntValue: IntValue,
+	BoolValue: BoolValue,
+	ObjectValue: ObjectValue,
+	CFrameValue: CFrameValue,
+	Vector3Value: Vector3Value,
+	Color3Value: Color3Value,
+	BrickColorValue: BrickColorValue,
+
+	-- Scripts.
+	ModuleScript: ModuleScript,
+	Script: Script,
+	LocalScript: LocalScript,
+
+	-- Players.
+	Player: Player,
+	Team: Team,
+}
+
+--[=[
+	Class names `InstanceIs` and `Traits.child` resolve to real Instance types (and autocomplete). Any other class name string still works, deriving plain `Instance`.
+]=]
+export type InstanceClassName = keyof<InstanceTypes>
+
+-- Type-function bodies cannot name the `Bin` type alias directly (the runtime local `Bin` shadows it), so rebind it.
+type BinType = Bin
+
+--[=[
+	Resolves an attribute kind literal (eg. 'number') to the type its values hold (eg. `number`). Errors when the kind is not a literal `AttributeKind`.
+]=]
+-- selene: allow(undefined_variable) -- Selene does not understand type-function bodies (the `types` global, type aliases as values).
+type function ToAttributeValue (kind: type): type
+	local kindName = if kind:is('singleton') then kind:value() else nil
+
+	if typeof(kindName) ~= 'string' then
+		error(`attribute kind must be a literal AttributeKind string, eg. 'number' (got {kind.tag})`)
+	end
+
+	local valueType = AttributeValueTypes:readproperty(kind)
+
+	if valueType == nil then
+		error(
+			`'{kindName}' is not an AttributeKind (expected one of string, number, boolean, UDim, UDim2, BrickColor, Color3, Vector2, Vector3, CFrame, NumberSequence, ColorSequence, NumberRange, Rect, or Font)`
+		)
+	end
+
+	return valueType
+end
+
+--[=[
+	Resolves a class name literal to its Instance type through InstanceTypes; class names outside the map (or non-literal strings) fall back to `Instance`.
+]=]
+-- selene: allow(undefined_variable) -- Selene does not understand type-function bodies (the `types` global, type aliases as values).
+type function ToInstanceType (className: type): type
+	if not className:is('singleton') then
+		return InstanceTypes:readproperty(types.singleton('Instance')) :: type
+	end
+
+	return InstanceTypes:readproperty(className) or InstanceTypes:readproperty(types.singleton('Instance')) :: type
+end
+
+--[=[
+	Validates the literal type passed to `Traits.info` and normalizes it into the info contract's type: `Tag: string`, `InstanceIs` always present, `Attributes`/`Children` always tables. Malformed contracts (unknown keys, bad markers, reserved child names) are type errors at the `Traits.info` call.
+]=]
+-- selene: allow(undefined_variable) -- Selene does not understand type-function bodies (the `types` global, type aliases as values).
+type function ToInfo (properties: type): type
+	if not properties:is('table') then
+		error(`Traits.info expects a table (got {properties.tag})`)
+	end
+
+	-- A field may arrive as `T?` through contextual typing; peel the nil off to inspect the value type.
+	local function peelNil (fieldType: type): type
+		if fieldType.tag ~= 'union' then
+			return fieldType
+		end
+
+		local components = {}
+
+		for _, component in fieldType:components() do
+			if not (component:is('singleton') and component:value() == nil) then
+				table.insert(components, component)
+			end
+		end
+
+		if #components == 1 then
+			return components[1]
+		end
+
+		return types.unionof(table.unpack(components))
+	end
+
+	for key in properties:properties() do
+		local name = if key:is('singleton') then key:value() else nil
+
+		if name ~= 'Tag' and name ~= 'InstanceIs' and name ~= 'Attributes' and name ~= 'Children' then
+			error(`unknown key '{tostring(name)}' (expected Tag, InstanceIs, Attributes, or Children)`)
+		end
+	end
+
+	local info = types.newtable()
+
+	local tag = properties:readproperty(types.singleton('Tag'))
+
+	if tag == nil or not (tag == types.string or (tag:is('singleton') and typeof(tag:value()) == 'string')) then
+		error(`Tag must be a string`)
+	end
+
+	info:setproperty(types.singleton('Tag'), types.string)
+
+	local instanceIs = properties:readproperty(types.singleton('InstanceIs'))
+
+	if instanceIs == nil then
+		instanceIs = types.singleton('Instance')
+	else
+		instanceIs = peelNil(instanceIs :: type)
+
+		if
+			not ((instanceIs :: type):is('singleton') and typeof((instanceIs :: type):value()) == 'string')
+			and instanceIs ~= types.string
+		then
+			error(`InstanceIs must be a class name string, eg. 'BasePart'`)
+		end
+	end
+
+	info:setproperty(types.singleton('InstanceIs'), instanceIs :: type)
+
+	local attributes = types.newtable()
+	local attributesType = properties:readproperty(types.singleton('Attributes'))
+
+	if attributesType ~= nil then
+		attributesType = peelNil(attributesType)
+
+		if not attributesType:is('table') then
+			error(`Attributes must be a table of Traits.attribute markers`)
+		end
+
+		-- Contextual typing against InfoProperties adds a `[string]: Attribute` indexer to the literal; only the literal names matter here.
+		for key, property in attributesType:properties() do
+			local name = if key:is('singleton') then key:value() else nil
+
+			if typeof(name) ~= 'string' then
+				error(`attribute names must be literal strings`)
+			end
+
+			local marker = property.read or property.write
+
+			if marker == nil or not marker:is('table') then
+				error(`Attributes.{name} must be made with Traits.attribute`)
+			end
+
+			local kind = marker:readproperty(types.singleton('Kind'))
+
+			if kind == nil then
+				error(`Attributes.{name} must be made with Traits.attribute (missing Kind)`)
+			end
+
+			local valueType = ToAttributeValue(kind)
+
+			local normalized = types.newtable()
+			normalized:setproperty(types.singleton('Kind'), kind)
+			normalized:setproperty(types.singleton('Default'), types.unionof(valueType, types.singleton(nil)))
+
+			attributes:setproperty(key, normalized)
+		end
+	end
+
+	info:setproperty(types.singleton('Attributes'), attributes)
+
+	local children = types.newtable()
+	local childrenType = properties:readproperty(types.singleton('Children'))
+
+	if childrenType ~= nil then
+		childrenType = peelNil(childrenType)
+
+		if not childrenType:is('table') then
+			error(`Children must be a table of Traits.child markers`)
+		end
+
+		-- Contextual typing against InfoProperties adds a `[string]: Child` indexer to the literal; only the literal names matter here.
+		for key, property in childrenType:properties() do
+			local name = if key:is('singleton') then key:value() else nil
+
+			if typeof(name) ~= 'string' then
+				error(`child names must be literal strings`)
+			end
+
+			-- Keep in sync with RESERVED_FIELDS.
+			if
+				name == 'Instance'
+				or name == 'Attributes'
+				or name == 'Bin'
+				or name == 'Info'
+				or name == 'Init'
+				or name == 'Start'
+				or name == 'Destroy'
+				or name == 'AttributeChanged'
+			then
+				error(`Children.{name}: name is reserved on bound objects`)
+			end
+
+			local marker = property.read or property.write
+
+			if marker == nil or not marker:is('table') then
+				error(`Children.{name} must be made with Traits.child`)
+			end
+
+			local classNameType = marker:readproperty(types.singleton('ClassName'))
+
+			if classNameType == nil then
+				error(`Children.{name} must be made with Traits.child (missing ClassName)`)
+			end
+
+			if
+				not (classNameType:is('singleton') and typeof(classNameType:value()) == 'string')
+				and classNameType ~= types.string
+			then
+				error(`Children.{name}: ClassName must be a string`)
+			end
+
+			local normalized = types.newtable()
+			normalized:setproperty(types.singleton('ClassName'), classNameType)
+			normalized:setproperty(types.singleton('Wait'), types.unionof(types.number, types.singleton(nil)))
+
+			children:setproperty(key, normalized)
+		end
+	end
+
+	info:setproperty(types.singleton('Children'), children)
+
+	return info
+end
+
+--[=[
+	Derives the bound object's type from an info contract's type: `Instance` resolved from `InstanceIs`, `Attributes` typed per attribute kind, `Bin`, and each declared child injected under its own name.
+]=]
+-- selene: allow(undefined_variable) -- Selene does not understand type-function bodies (the `types` global, type aliases as values).
+type function ToBound (info: type): type
+	if not info:is('table') then
+		error(`BoundOf expects an info contract's type -- pass typeof(YourTrait.Info) (got {info.tag})`)
+	end
+
+	local bound = types.newtable()
+
+	bound:setproperty(
+		types.singleton('Instance'),
+		ToInstanceType(info:readproperty(types.singleton('InstanceIs')) or types.string)
+	)
+
+	bound:setproperty(types.singleton('Bin'), BinType)
+
+	local attributes = types.newtable()
+	local attributesType = info:readproperty(types.singleton('Attributes'))
+
+	if attributesType ~= nil and attributesType:is('table') then
+		for key, property in attributesType:properties() do
+			local marker = property.read or property.write
+
+			if marker == nil or not marker:is('table') then
+				continue
+			end
+
+			local kind = marker:readproperty(types.singleton('Kind'))
+
+			if kind ~= nil and kind:is('singleton') then
+				attributes:setproperty(key, ToAttributeValue(kind))
+			end
+		end
+
+		-- Loosely-typed infos (eg. the exported Info type) declare attributes through an indexer; mirror the untyped behavior for them.
+		if attributesType:indexer() ~= nil then
+			attributes:setindexer(types.string, types.any)
+		end
+	end
+
+	bound:setproperty(types.singleton('Attributes'), attributes)
+
+	local childrenType = info:readproperty(types.singleton('Children'))
+
+	if childrenType ~= nil and childrenType:is('table') then
+		for key, property in childrenType:properties() do
+			local marker = property.read or property.write
+
+			if marker == nil or not marker:is('table') then
+				continue
+			end
+
+			bound:setproperty(key, ToInstanceType(marker:readproperty(types.singleton('ClassName')) or types.string))
+		end
+	end
+
+	return bound
+end
+
+--[=[
+	The type an attribute of the given kind literal holds, eg. `AttributeValue<'number'>` is `number`.
+]=]
+export type AttributeValue<Kind> = ToAttributeValue<Kind>
+
+--[=[
+	The Instance type of the given class name literal, eg. `InstanceOf<'BasePart'>` is `BasePart`. Class names outside `InstanceClassName` derive plain `Instance`.
+]=]
+export type InstanceOf<ClassName> = ToInstanceType<ClassName>
+
+--[=[
+	The validated, normalized type of the info contract `Traits.info` builds from the given properties type.
+]=]
+export type InfoOf<Properties> = ToInfo<Properties>
+
+--[=[
+	The fully-typed bound object derived from an info contract's type. Combine with your trait's type for `self`:
+	```
+	type Self = typeof(Door) & Traits.BoundOf<typeof(Door.Info)>
+	```
+	With the Door example above, `Self` carries `Instance: BasePart`, `Attributes: { OpenAngle: number, Locked: boolean }`, `Bin: Bin`, and `Prompt: ProximityPrompt` -- all derived from the contract.
+]=]
+export type BoundOf<Info> = ToBound<Info>
 
 return Traits

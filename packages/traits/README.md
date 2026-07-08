@@ -74,10 +74,12 @@ function Door.Destroy (self: Self)
 	-- Optional: runs on unbind, before the Bin empties itself. Yielding here errors.
 end
 
-type Self = typeof(Door) & Traits.Bound & { Prompt: ProximityPrompt }
+type Self = typeof(Door) & Traits.BoundOf<typeof(Door.Info)>
 
 return Door
 ```
+
+`Traits.BoundOf` derives the whole bound object's type from the `Info` contract — at the type level, through [Luau type functions](https://luau.org/typecheck#type-functions) (requires the new type solver). In the example above, `Self` carries `Instance: BasePart`, `Attributes: { OpenAngle: number, Locked: boolean }`, `Bin: Traits.Bin`, and `Prompt: ProximityPrompt`, with no manual annotations. A malformed contract — a typo'd key, a bad attribute kind, a default that doesn't match its kind, a reserved child name — is a type error at the `Traits.info` call itself.
 
 ## Lifecycle
 
@@ -104,39 +106,47 @@ Creates the trait's contract; assign it to the module's `Info` field (`Traits.ne
 
 Declares an attribute requirement. `kind` is a `typeof()` name (`'string'`, `'number'`, `'boolean'`, `'Vector3'`, `'Color3'`, `'CFrame'`, and every other Roblox attribute type). With a `default` the attribute is optional and the default is written to instances that lack it; without one it's required.
 
+The kind literal is preserved at the type level: the derived bound object types the attribute's value (`'number'` becomes `number`), and `default` is checked against the kind where you write it.
+
 ### `Traits.child(className, options?): Child`
 
 Declares a required child. `options.Wait` (seconds) waits for the child to appear — useful under StreamingEnabled — instead of failing immediately.
+
+The class name literal is preserved at the type level: the derived bound object types the injected field (`'ProximityPrompt'` becomes `ProximityPrompt`). Common class names autocomplete; anything else is accepted and derives plain `Instance`.
 
 ### `Traits.new(moduleScripts): Extension`
 
 Creates the extension, wiring the given trait ModuleScripts. Add it to Chief with `AddExtension`. Trait modules are required and validated eagerly, so a malformed trait fails at composition instead of surfacing later as an inert tag.
 
-### `Traits.get(instance, trait): Bound?`
+### `Traits.get(instance, trait): (BoundOf<typeof(trait.Info)> & typeof(trait))?`
 
-The bound object a trait has attached to an instance, or nil.
+The bound object a trait has attached to an instance, or nil. Fully typed: the shape is derived from the trait's `Info` contract, and the trait's own methods and fields are reachable on it.
 
-### `Traits.getAll(trait): { Bound }`
+### `Traits.getAll(trait): { BoundOf<typeof(trait.Info)> & typeof(trait) }`
 
 Every bound object of a trait, in no particular order.
+
+### `Traits.BoundOf<typeof(trait.Info)>`
+
+The fully-typed bound object derived from an info contract's type: `Instance` resolved from `InstanceIs`, `Attributes` typed per attribute kind, `Bin`, and one field per declared child. Combine with the trait's own type for `self`: `type Self = typeof(Door) & Traits.BoundOf<typeof(Door.Info)>`.
 
 ## The bound object (`self`)
 
 Lifecycle methods receive a per-instance object:
 
 - `self.Instance` — the tagged instance.
-- `self.Attributes` — declared attribute values, kept in sync as they change.
+- `self.Attributes` — a live, two-way view of the declared attribute values. Reads stay in sync as attributes change; writes validate against the contract and set the real attribute on the instance — `self.Attributes.OpenAngle = 45` behaves exactly like `self.Instance:SetAttribute('OpenAngle', 45)` (including firing `AttributeChanged`). Writing an undeclared name, a `nil`, or a wrong-typed value errors. Iteration works as normal.
 - `self.Bin` — a cleanup container. `Bin:Add(item)` accepts a connection (disconnected), instance (destroyed), thread (cancelled), or function (called); everything is cleaned in reverse order automatically on unbind.
 - One field per declared child (e.g. `self.Prompt`).
 - Everything on the trait module itself, via the metatable.
 
-Type it by intersection: `type Self = typeof(Door) & Traits.Bound & { Prompt: ProximityPrompt }`.
+Type it by intersection: `type Self = typeof(Door) & Traits.BoundOf<typeof(Door.Info)>`. (`Traits.Bound` remains as an untyped fallback for contracts that cannot be declared inline.)
 
 ## Errors and warnings
 
 - `BadArgument:` — thrown when `new`, `info`, `attribute`, `child`, `get`, `getAll`, or `Bin:Add` receive the wrong shape (including reserved child names like `Instance`, `Bin`, `Init`, and modules passed to `new` without an `Info` contract).
 - `BadInstance:` (warning) — a tagged instance failed the contract; names the failed requirement.
-- `BadAttribute:` (warning) — a declared attribute changed to a value of the wrong type; the change is ignored.
+- `BadAttribute:` — thrown when writing to `self.Attributes` with an undeclared name, a `nil`, or a value of the wrong type. Also warned (not thrown) when an attribute changes externally to a wrong-typed value; that change is ignored.
 - `TraitError:` — a trait's `Init` or `Destroy` errored (or yielded — both must be synchronous); reported with traceback, cleanup still runs.
 - `DuplicateTrait:` (warning) — the same trait module was wired twice (e.g. added to two Chief instances).
 
