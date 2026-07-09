@@ -1,5 +1,5 @@
 name = "chief/traits"
-version = "0.1.0-canary.2"
+version = "0.1.0-canary.3"
 description = "The Traits extension for Chief: binds behavior to Roblox instances through CollectionService tags."
 authors = ["ryancundiff"]
 repository = "https://github.com/ryancundiff/chief"
