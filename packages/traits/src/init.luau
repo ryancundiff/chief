@@ -504,7 +504,7 @@ end
 
 	@error BadArgument -- Thrown when `properties` is not a valid `InfoProperties`.
 ]=]
-function Traits.info <T>(properties: T | InfoProperties): ToInfo<T>
+function Traits.info <T>(properties: T & InfoProperties): ToInfo<T>
 	local typedProperties: InfoProperties = properties :: any
 
 	assert(
@@ -845,11 +845,13 @@ export type ChildOptions = {
 --[=[
 	Properties accepted by `Traits.info`. `InstanceIs` offers the class names in `InstanceClassName` for autocomplete, but any class name string is accepted (unknown ones fall back to `Instance` in the derived types).
 ]=]
+-- Properties are read-only so `T & InfoProperties` in `Traits.info` stays covariant: a literal
+-- `InstanceIs = 'BasePart'` would otherwise fail to match the invariant `InstanceClassName` union.
 export type InfoProperties = {
-	Tag: string,
-	InstanceIs: InstanceClassName?,
-	Attributes: { [string]: Attribute }?,
-	Children: { [string]: Child }?,
+	read Tag: string,
+	read InstanceIs: InstanceClassName?,
+	read Attributes: { [string]: Attribute }?,
+	read Children: { [string]: Child }?,
 }
 
 --[=[
