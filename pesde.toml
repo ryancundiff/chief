@@ -10,8 +10,3 @@ environment = "roblox"
 [indices]
 default = "https://github.com/pesde-pkg/index"
 
-[wally_indices]
-default = "https://github.com/UpliftGames/wally-index"
-
-[dev_dependencies]
-testez = { wally = "roblox/testez", version = "0.4.1" }

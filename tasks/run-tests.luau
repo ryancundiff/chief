@@ -7,8 +7,8 @@ local ServerStorage = game:GetService('ServerStorage')
 local chiefTests = ServerStorage:FindFirstChild('ChiefTests')
 assert(chiefTests ~= nil, 'ChiefTests folder not found in ServerStorage (was the place built from test.project.json?)')
 
-local testsFolder = chiefTests:FindFirstChild('Tests')
-assert(testsFolder ~= nil, 'Tests folder not found in ChiefTests')
+local testsFolder = chiefTests:FindFirstChild('tests')
+assert(testsFolder ~= nil, 'tests folder not found in ChiefTests')
 
 local runTests = require(testsFolder:FindFirstChild('Run') :: ModuleScript) :: () -> ()
 

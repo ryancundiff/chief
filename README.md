@@ -99,12 +99,49 @@ See the [core README](packages/core) for the full extension contract.
 
 ## Development
 
-This repository is a pesde workspace (`workspace_members = ["packages/*"]`).
+This repository is a pesde workspace (`workspace_members = ["packages/*"]`). CI runs each check as its own job, so a red badge points at the step that broke.
 
 - **Format**: [StyLua](https://github.com/JohnnyMorganz/StyLua) (`stylua.toml`)
-- **Lint**: [selene](https://github.com/Kampfkarren/selene) (`selene.toml`, `std = "roblox+testez"`)
-- **Test**: [TestEZ](https://github.com/Roblox/testez) specs under `tests/`, executed in real Roblox by CI via the [Open Cloud Luau Execution API](https://create.roblox.com/docs/cloud/reference/LuauExecutionSessionTask)
+- **Lint**: [selene](https://github.com/Kampfkarren/selene) (`selene.toml`)
+- **Typecheck**: [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp) with the new solver (`.luaurc`), covering the packages and the tests — `packages/traits` derives its bound-object types with `type function`, which only the new solver understands
+- **Test**: specs under `tests/`, executed in real Roblox by CI via the [Open Cloud Luau Execution API](https://create.roblox.com/docs/cloud/reference/LuauExecutionSessionTask)
 - `roblox_packages/` and `pesde.lock` are generated and gitignored — never edit them.
+
+### Tests
+
+Specs live in `tests/` as `*.spec` ModuleScripts and run on a small in-repo runner, `tests/Runner.luau`, which exposes a Jest-shaped API:
+
+```luau
+--!strict
+
+local Runner = require('./Runner')
+
+local describe = Runner.describe
+local expect = Runner.expect
+local it = Runner.it
+
+describe('addition', function ()
+	it('adds', function ()
+		expect(1 + 1).toBe(2)
+	end)
+end)
+
+return {}
+```
+
+Matchers: `toBe`, `toBeTruthy`, `toBeFalsy`, `toBeNil`, `toContain`, and `toThrow('BadArgument')` for Chief's prefixed errors. `beforeEach`/`afterEach` nest with `describe`, and a test body may yield.
+
+Chief uses its own runner rather than TestEZ (archived, and its injected globals force `--!nocheck` on specs) or [Jest Lua](https://github.com/jsdotlua/jest-lua) (its sandbox rejects require-by-string, which pesde's generated shims depend on, so only dependency-free packages are requirable under it). The runner loads specs with a plain `require`, so every package is testable, and it exports its API instead of injecting globals, so specs typecheck under `--!strict`.
+
+To run the suite locally, against the same Open Cloud path CI uses:
+
+```sh
+rojo build test.project.json --output test-place.rbxl
+ROBLOX_API_KEY=... ROBLOX_UNIVERSE_ID=... ROBLOX_PLACE_ID=... \
+	python3 scripts/upload_and_run_task.py test-place.rbxl tasks/run-tests.luau
+```
+
+The API key needs the `universe.place:write` and `universe.place.luau-execution-session:write` scopes. Each run uploads a new saved version of the test place.
 
 ## License
 

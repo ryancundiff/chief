@@ -3,3 +3,6 @@ pesde.lock
 *.rbxl
 __pycache__/
 CLAUDE.md
+globalTypes.d.luau
+sourcemap.json
+.env
