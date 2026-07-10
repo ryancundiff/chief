@@ -6,13 +6,10 @@
     "ServerStorage": {
       "ChiefTests": {
         "$className": "Folder",
-        "Packages": {
+        "packages": {
           "$path": "packages"
         },
-        "RobloxPackages": {
-          "$path": "roblox_packages"
-        },
-        "Tests": {
+        "tests": {
           "$path": "tests"
         }
       }
