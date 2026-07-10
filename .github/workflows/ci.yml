@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  static-checks:
-    name: Lint and format
+  lint:
+    name: Lint with selene
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -19,8 +19,50 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Lint with selene
         run: selene packages tests tasks
+
+  format:
+    name: Check formatting with StyLua
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install tools with Rokit
+        uses: CompeyDev/setup-rokit@v0.2.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Check formatting with StyLua
         run: stylua --check packages tests tasks
+
+  typecheck:
+    name: Typecheck with luau-lsp
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install tools with Rokit
+        uses: CompeyDev/setup-rokit@v0.2.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      # Each package requires its dependencies from a sibling roblox_packages/, which pesde creates.
+      - name: Install packages
+        run: pesde install
+      # Pinned to the luau-lsp version in rokit.toml; bump both together.
+      - name: Download Roblox global types
+        run: curl -fsSL -o globalTypes.d.luau https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/1.68.1/scripts/globalTypes.d.luau
+      # tests/ requires by instance path, which only resolves through the Rojo tree.
+      - name: Generate sourcemap
+        run: rojo sourcemap test.project.json --output sourcemap.json
+      # LuauSolverV2 is required: packages/traits derives its types with `type function`, which the old solver cannot parse.
+      # Vendored dependencies are ignored -- pesde links workspace `core` into each dependent, so one
+      # error there would otherwise be reported once per dependent.
+      - name: Typecheck with luau-lsp
+        run: |
+          luau-lsp analyze \
+            --definitions=globalTypes.d.luau \
+            --flag:LuauSolverV2=true \
+            --sourcemap=sourcemap.json \
+            --ignore="**/roblox_packages/**" \
+            packages/*/src/init.luau tasks/*.luau tests/*.luau tests/Helpers/*.luau tests/Fixtures/*.luau
 
   tests:
     name: Run tests via Open Cloud
