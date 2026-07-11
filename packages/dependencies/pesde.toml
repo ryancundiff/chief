@@ -1,5 +1,5 @@
 name = "chief/dependencies"
-version = "0.1.0-canary.1"
+version = "0.1.0"
 description = "The Dependencies extension for Chief: topological dependency injection."
 authors = ["ryancundiff"]
 repository = "https://github.com/ryancundiff/chief"

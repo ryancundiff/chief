@@ -1,5 +1,5 @@
 name = "chief/bin"
-version = "0.1.0-canary.1"
+version = "0.1.0"
 description = "A small, strictly typed cleanup container for Roblox: connections, instances, threads, and functions, emptied in reverse insertion order."
 authors = ["ryancundiff"]
 repository = "https://github.com/ryancundiff/chief"
