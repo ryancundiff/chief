@@ -30,6 +30,7 @@ pesde add chief/core
 pesde add chief/lifecycles   # optional
 pesde add chief/dependencies # optional
 pesde add chief/traits       # optional
+pesde add chief/bin          # optional; standalone cleanup container, also used by traits
 ```
 
 ## Quick start
