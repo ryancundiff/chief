@@ -17,6 +17,8 @@ local lifePingA = fixtures.LifePingA
 local lifePingB = fixtures.LifePingB
 local lifeSilent = fixtures.LifeSilent
 
+local moduleA = require(lifePingA) :: any
+
 local function eventString ()
 	return table.concat(recorder.getEvents(), ', ')
 end
@@ -26,17 +28,17 @@ end
 	event directly instead of waiting on a real Roblox signal.
 
 	@param method string
-	@param isolate boolean?
+	@param dispatch Lifecycles.Dispatch?
 	@return (fire, connectCalled)
 ]=]
-local function bootCapturing (method: string, isolate: boolean?): ((...any) -> (), () -> boolean)
+local function bootCapturing (method: string, dispatch: Lifecycles.Dispatch?): ((...any) -> (), () -> boolean)
 	local captured: ((...any) -> ())? = nil
 
 	local lifecycle: Lifecycles.Lifecycle = {
 		Method = method,
-		Isolate = isolate,
-		Connect = function (dispatch)
-			captured = dispatch
+		Dispatch = dispatch,
+		Connect = function (fire)
+			captured = fire
 
 			return nil
 		end,
@@ -87,9 +89,15 @@ describe('new', function ()
 		end).toThrow('BadArgument')
 	end)
 
-	it('errors when Isolate is not a boolean', function ()
+	it('errors when Dispatch is not a mode', function ()
 		expect(function ()
-			Lifecycles.new({ { Method = 'X', Connect = function () end, Isolate = 'yes' } } :: any)
+			Lifecycles.new({ { Method = 'X', Connect = function () end, Dispatch = 'Sometimes' } } :: any)
+		end).toThrow('BadArgument')
+	end)
+
+	it('errors when Dispatch is not a string', function ()
+		expect(function ()
+			Lifecycles.new({ { Method = 'X', Connect = function () end, Dispatch = 5 } } :: any)
 		end).toThrow('BadArgument')
 	end)
 
@@ -127,8 +135,8 @@ describe('dispatch', function ()
 
 		local lifecycle: Lifecycles.Lifecycle = {
 			Method = 'Ping',
-			Connect = function (dispatch)
-				captured = dispatch
+			Connect = function (fire)
+				captured = fire
 
 				return nil
 			end,
@@ -166,8 +174,8 @@ describe('dispatch', function ()
 	end)
 end)
 
-describe('isolation', function ()
-	it('isolates handlers by default, so a slow one does not delay the others', function ()
+describe('Spawn mode', function ()
+	it('isolates handlers, so a slow one does not delay the others', function ()
 		local fire = bootCapturing('Slow')
 
 		fire()
@@ -179,14 +187,123 @@ describe('isolation', function ()
 
 		expect(eventString()).toBe('B.Slow, A.Slow')
 	end)
+end)
 
-	it('runs handlers inline when Isolate is false, so a yield blocks the dispatch', function ()
-		local fire = bootCapturing('SlowShared', false)
+describe('Inline mode', function ()
+	it('runs handlers on the event thread, so a yield blocks the dispatch', function ()
+		local fire = bootCapturing('SlowShared', 'Inline')
 
 		fire()
 
 		-- fire() yielded through A's handler, so both have run in module order by the time it returns.
 		expect(eventString()).toBe('A.SlowShared, B.SlowShared')
+	end)
+end)
+
+describe('Await mode', function ()
+	it('blocks fire until every handler has finished, running them concurrently', function ()
+		local fire = bootCapturing('AwaitSlow', 'Await')
+
+		fire()
+
+		-- B ran immediately while A was yielding; fire only returned once A finished too.
+		expect(eventString()).toBe('B.AwaitSlow, A.AwaitSlow')
+	end)
+
+	it('survives an erroring handler: the others run and fire still returns', function ()
+		local fire = bootCapturing('AwaitError', 'Await')
+
+		-- A LifecycleError warning for A's handler is expected in the output here.
+		fire()
+
+		expect(eventString()).toBe('B.AwaitError')
+	end)
+
+	it('returns immediately when every handler is synchronous', function ()
+		local fire = bootCapturing('AwaitFast', 'Await')
+
+		fire()
+
+		expect(eventString()).toBe('A.AwaitFast, B.AwaitFast')
+	end)
+end)
+
+describe('every', function ()
+	it('errors when seconds is not positive', function ()
+		expect(function ()
+			Lifecycles.every(0, 'Tick')
+		end).toThrow('BadArgument')
+	end)
+
+	it('errors when seconds is not a number', function ()
+		expect(function ()
+			(Lifecycles.every :: any)('soon', 'Tick')
+		end).toThrow('BadArgument')
+	end)
+
+	it('errors when method is not a non-empty string', function ()
+		expect(function ()
+			Lifecycles.every(1, '')
+		end).toThrow('BadArgument')
+	end)
+
+	it('ticks repeatedly with the elapsed time', function ()
+		Chief.new({ Verbose = false })
+			:AddModule(lifePingA)
+			:AddExtension(Lifecycles.new({ Lifecycles.every(0.05, 'Tick') }))
+			:Start()
+
+		-- The loop lives for the session; the flag confines recording to this test.
+		moduleA.TickEnabled = true
+		task.wait(0.18)
+		moduleA.TickEnabled = false
+
+		local events = recorder.getEvents()
+
+		expect(#events >= 2).toBe(true)
+		expect(events[1]).toBe('A.Tick:number')
+	end)
+end)
+
+describe('built-ins', function ()
+	it('dispatches Heartbeat with frame delta times', function ()
+		-- Heartbeat rather than PostSimulation: the physics-step signals (PreSimulation,
+		-- PostSimulation) do not fire in headless Open Cloud tasks, while Heartbeat does.
+		Chief.new({ Verbose = false })
+			:AddModule(lifePingA)
+			:AddExtension(Lifecycles.new({ Lifecycles.Heartbeat }))
+			:Start()
+
+		-- The connection lives for the session; the flag confines recording to this test.
+		moduleA.FrameEnabled = true
+		task.wait()
+		task.wait()
+		moduleA.FrameEnabled = false
+
+		expect(eventString()).toContain('A.Heartbeat')
+	end)
+
+	it('wires the player, character, and closing built-ins without erroring', function ()
+		-- No players exist under Open Cloud, and the place closes only after the run, so none of
+		-- these fire; this proves each built-in's Connect runs end to end (replay loops included).
+		Chief.new({ Verbose = false })
+			:AddModule(lifePingA)
+			:AddExtension(Lifecycles.new({
+				Lifecycles.PlayerAdded,
+				Lifecycles.PlayerRemoving,
+				Lifecycles.CharacterAdded,
+				Lifecycles.CharacterRemoving,
+				Lifecycles.Closing,
+				-- Not implemented by the module, so these never connect -- including PreRender,
+				-- whose client-only signal would error if the opt-in check did not gate it.
+				Lifecycles.PreRender,
+				Lifecycles.PreAnimation,
+				Lifecycles.PreSimulation,
+				Lifecycles.PostSimulation,
+			}))
+			:Start()
+
+		expect(eventString()).toBe('')
 	end)
 end)
 

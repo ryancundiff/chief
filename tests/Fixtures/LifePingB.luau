@@ -9,22 +9,29 @@ function LifePingB.Ping (self: any, value: string)
 	recorder.record(`B.Ping:{value}:{self == LifePingB}`)
 end
 
--- Isolated (default): a yielding handler must not delay the others.
+-- Spawn (default): B is the fast sibling that must not be delayed by A's yield.
 function LifePingB.Slow (_self: any)
-	if 'B' == 'A' then
-		task.wait(0.05)
-	end
-
 	recorder.record('B.Slow')
 end
 
--- Shared (Isolate = false): handlers run inline, so a yield blocks the dispatch.
+-- Inline: B runs after A on the event's thread.
 function LifePingB.SlowShared (_self: any)
-	if 'B' == 'A' then
-		task.wait(0.05)
-	end
-
 	recorder.record('B.SlowShared')
+end
+
+-- Await: B finishes immediately while A is still yielding.
+function LifePingB.AwaitSlow (_self: any)
+	recorder.record('B.AwaitSlow')
+end
+
+-- Await: must still run (and the dispatch still return) when A's handler errors.
+function LifePingB.AwaitError (_self: any)
+	recorder.record('B.AwaitError')
+end
+
+-- Await: fully synchronous handlers exercise the no-suspend path.
+function LifePingB.AwaitFast (_self: any)
+	recorder.record('B.AwaitFast')
 end
 
 function LifePingB.Bindable (_self: any, value: string)
