@@ -79,7 +79,7 @@ type Self = typeof(Door) & Traits.BoundOf<typeof(Door.Info)>
 return Door
 ```
 
-`Traits.BoundOf` derives the whole bound object's type from the `Info` contract — at the type level, through [Luau type functions](https://luau.org/typecheck#type-functions) (requires the new type solver). In the example above, `Self` carries `Instance: BasePart`, `Attributes: { OpenAngle: number, Locked: boolean }`, `Bin: Traits.Bin`, and `Prompt: ProximityPrompt`, with no manual annotations. A malformed contract — a typo'd key, a bad attribute kind, a default that doesn't match its kind, a reserved child name — is a type error at the `Traits.info` call itself.
+`Traits.BoundOf` derives the whole bound object's type from the `Info` contract — at the type level, through [Luau type functions](https://luau.org/typecheck#type-functions) (requires the new type solver). In the example above, `Self` carries `Instance: BasePart`, `Attributes: { OpenAngle: number, Locked: boolean }`, `Bin` (a [`chief/bin`](../bin) Bin), and `Prompt: ProximityPrompt`, with no manual annotations. A malformed contract — a typo'd key, a bad attribute kind, a default that doesn't match its kind, a reserved child name — is a type error at the `Traits.info` call itself.
 
 ## Lifecycle
 

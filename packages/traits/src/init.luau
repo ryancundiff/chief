@@ -3,6 +3,7 @@
 -- Roblox services.
 local CollectionService = game:GetService('CollectionService')
 
+local Bin = require('./roblox_packages/bin')
 local Chief = require('./roblox_packages/core')
 
 --[=[
@@ -167,68 +168,6 @@ end
 ]=]
 local function warnBindFailure (traitName: string, instance: Instance, reason: string)
 	warn(`BadInstance: Cannot bind trait '{traitName}' to {instance:GetFullName()} ({reason})`)
-end
-
---[[ BIN ]]
-
---[=[
-	A small cleanup container attached to every bound object as `self.Bin`. Whatever is added is cleaned up automatically when the trait unbinds (connections disconnected, instances destroyed, threads cancelled functions called), in reverse insertion order.
-]=]
-local Bin = {}
-local binMt = { __index = Bin }
-
---[=[
-	Create an empty Bin.
-
-	@return Bin
-]=]
-function Bin.new (): Bin
-	return setmetatable({
-		_Items = {},
-	}, binMt) :: Bin
-end
-
---[=[
-	Add an item to clean up when the Bin is emptied. Returns the item so adds can wrap assignments.
-
-	@param item BinItem -- A connection, instance, thread, or function.
-	@return BinItem
-
-	@error BadArgument -- Thrown when `item` is not a BinItem.
-]=]
-function Bin.Add (self: Bin, item: BinItem): BinItem
-	local itemType = typeof(item)
-
-	assert(
-		itemType == 'RBXScriptConnection' or itemType == 'Instance' or itemType == 'thread' or itemType == 'function',
-		`BadArgument: Bad argument #1 for Add (expected RBXScriptConnection, Instance, thread, or function, got {itemType})`
-	)
-
-	table.insert(self._Items, item)
-
-	return item
-end
-
---[=[
-	Clean up every item and empty the Bin, in reverse insertion order. The Bin remains usable afterward. Called automatically when the trait unbinds.
-]=]
-function Bin.Empty (self: Bin)
-	for index = #self._Items, 1, -1 do
-		local item = self._Items[index]
-		local itemType = typeof(item)
-
-		if itemType == 'RBXScriptConnection' then
-			(item :: RBXScriptConnection):Disconnect()
-		elseif itemType == 'Instance' then
-			(item :: Instance):Destroy()
-		elseif itemType == 'thread' then
-			task.cancel(item :: thread)
-		else
-			(item :: () -> ())()
-		end
-	end
-
-	table.clear(self._Items)
 end
 
 --[[ BINDING ]]
@@ -876,22 +815,10 @@ export type Trait = {
 	[any]: any,
 }
 
---[=[
-	An item a Bin can clean up: a connection (disconnected), instance (destroyed), thread (cancelled), or function (called).
-]=]
-export type BinItem = RBXScriptConnection | Instance | thread | () -> ()
-
---[=[
-	A cleanup container. Every bound object carries one as `self.Bin`; it is emptied automatically when the trait unbinds.
-]=]
-export type Bin = setmetatable<{
-	--[=[
-		Items to clean up, in insertion order. Used internally by Bin.
-
-		@private
-	]=]
-	_Items: { BinItem },
-}, typeof(binMt)>
+-- Internal aliases for chief/bin's types; deliberately not re-exported. Consumers who need to
+-- name these types should depend on chief/bin directly.
+type BinItem = Bin.BinItem
+type Bin = Bin.Bin
 
 --[=[
 	The per-instance object a trait's lifecycle methods receive as `self`, untyped. Fields declared in the contract's `Children` are injected under their own names; trait methods and data are reachable through the metatable.
