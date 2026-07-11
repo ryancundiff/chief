@@ -19,6 +19,7 @@ The core is intentionally small — it loads modules, runs the Init/Start boot b
 | [`chief/lifecycles`](packages/lifecycles) | Binds events (`PlayerAdded`, `Heartbeat`, custom) to module methods. |
 | [`chief/dependencies`](packages/dependencies) | Dependency injection with transitive loading and topological `Init` ordering. |
 | [`chief/traits`](packages/traits) | Binds per-instance behavior to CollectionService tags, with typed attribute and child contracts. |
+| [`chief/bin`](packages/bin) | A small cleanup container: connections, instances, threads, and functions, emptied in reverse insertion order. |
 
 ## Installation
 
