@@ -33,6 +33,8 @@ pesde add chief/traits       # optional
 pesde add chief/bin          # optional; standalone cleanup container, also used by traits
 ```
 
+Chief is pesde-first: packages are published to [pesde](https://pesde.dev) only. If you'd like Wally support, [open an issue](https://github.com/ryancundiff/chief/issues).
+
 ## Quick start
 
 A bootstrap script creates a Chief instance, adds modules and extensions, then starts:
