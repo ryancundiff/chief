@@ -7,7 +7,7 @@
 </a>
 </div>
 
-A strictly and fully typed, tested Luau module framework for Roblox, inspired by [Sleitnick's Knit](https://github.com/Sleitnick/Knit) and by [Marked's Quill](https://github.com/featherfall-org/quill). Modules are much like Knit's services and controllers: each has an `Init` and `Start` lifecycle, and more lifecycles can be added with the Lifecycles extension.
+A strictly and fully typed, tested Luau module framework for Roblox, inspired by [Sleitnick's Knit](https://github.com/Sleitnick/Knit) and by [Featherfall's Quill](https://github.com/featherfall-org/quill). Modules are much like Knit's services and controllers: each has an `Init` and `Start` lifecycle, and more lifecycles can be added with the Lifecycles extension.
 
 The core is intentionally small — it loads modules, runs the Init/Start boot barrier, and fires hooks. And like Quill, everything else (Roblox event lifecycles, dependency injection, etc.) lives in extensions that attach to those hooks. The core has no knowledge of RunService events, players, or dependency graphs.
 
