@@ -316,6 +316,132 @@ Lifecycles.CharacterRemoving = {
 } :: Lifecycle
 
 --[=[
+  Local lifecycles for client-side events.
+]=]
+Lifecycles.Local = {}
+
+setmetatable(Lifecycles.Local, {
+	__index = function (lifecycles, key)
+		assert(RunService:IsClient(), 'Local lifecycles are client-only')
+		return lifecycles[key]
+	end,
+})
+
+--[=[
+  Fires `LocalCharacterRemoving(player, character)` whenever the local player's character is about to be removed. Client only.
+]=]
+Lifecycles.Local.CharacterAdded = {
+	Method = 'LocalCharacterAdded',
+	Connect = function (fire)
+		assert(RunService:IsClient(), 'LocalCharacterAdded lifecycle is client-only')
+
+		local player = Players.LocalPlayer
+		player.CharacterAdded:Connect(function (character)
+			fire(player, character)
+		end)
+	end,
+} :: Lifecycle
+
+--[=[
+  Fires `LocalCharacterRemoving(player, character)` whenever the local player's character is about to be removed.
+]=]
+Lifecycles.Local.CharacterRemoving = {
+	Method = 'LocalCharacterRemoving',
+	Connect = function (fire)
+		assert(RunService:IsClient(), 'LocalCharacterRemoving lifecycle is client-only')
+
+		local player = Players.LocalPlayer
+		player.CharacterRemoving:Connect(function (character)
+			fire(player, character)
+		end)
+	end,
+} :: Lifecycle
+
+--[=[
+  Fires `LocalAppearanceLoaded(player, character)` whenever the local player's character has finished loading its appearance.
+]=]
+Lifecycles.Local.AppearanceLoaded = {
+	Method = 'LocalAppearanceLoaded',
+	Connect = function (fire)
+		assert(RunService:IsClient(), 'AppearanceLoaded lifecycle is client-only')
+
+		local player = Players.LocalPlayer
+		player.CharacterAppearanceLoaded:Connect(function (character)
+			fire(player, character)
+		end)
+	end,
+} :: Lifecycle
+
+--[=[
+  Fires `LocalHumanoidDied(player, character, humanoid)` whenever the local player's character's humanoid dies.
+]=]
+Lifecycles.Local.HumanoidDied = {
+	Method = 'LocalHumanoidDied',
+	Connect = function (fire)
+		assert(RunService:IsClient(), 'LocalHumanoidDied lifecycle is client-only')
+
+		local player = Players.LocalPlayer
+		player.CharacterAdded:Connect(function (character)
+			local humanoid = character:WaitForChild('Humanoid', 10) :: Humanoid?
+			if not humanoid then
+				return
+			end
+
+			humanoid.Died:Connect(function ()
+				fire(player, character, humanoid)
+			end)
+		end)
+	end,
+} :: Lifecycle
+
+--[=[
+  Fires `AppearanceLoaded(player, character)` whenever any player's character has finished loading its appearance, for present and future players alike.
+]=]
+Lifecycles.AppearanceLoaded = {
+	Method = 'AppearanceLoaded',
+	Connect = function (fire)
+		local function watch (player: Player)
+			player.CharacterAppearanceLoaded:Connect(function (character)
+				fire(player, character)
+			end)
+		end
+
+		for _, player in Players:GetPlayers() do
+			watch(player)
+		end
+
+		return Players.PlayerAdded:Connect(watch)
+	end,
+} :: Lifecycle
+
+--[=[
+  Fires `PlayerDied(player, character, humanoid)` whenever any player's character's humanoid dies, for present and future players alike.
+]=]
+Lifecycles.PlayerDied = {
+	Method = 'PlayerDied',
+	Connect = function (fire)
+		local function watch (player: Player)
+			player.CharacterAdded:Connect(function (character)
+				local humanoid = character:WaitForChild('Humanoid', 10) :: Humanoid?
+				if not humanoid then
+					return
+				end
+
+				humanoid.Died:Connect(function ()
+					fire(player, character, humanoid)
+				end)
+			end)
+		end
+
+		for _, player in Players:GetPlayers() do
+			watch(player)
+		end
+
+		return Players.PlayerAdded:Connect(watch)
+	end,
+} :: Lifecycle
+
+--[=[
 	Fires `Closing()` when the server begins shutting down, and holds the shutdown until every handler has finished (within Roblox's `BindToClose` budget of roughly 30 seconds). Handlers run concurrently, and one erroring handler cannot stop the others -- this is the lifecycle for saving player data. Server only.
 ]=]
 Lifecycles.Closing = {
