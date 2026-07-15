@@ -415,10 +415,10 @@ Lifecycles.AppearanceLoaded = {
 } :: Lifecycle
 
 --[=[
-  Fires `PlayerDied(player, character, humanoid)` whenever any player's character's humanoid dies, for present and future players alike.
+  Fires `HumanoidDied(player, character, humanoid)` whenever any player's character's humanoid dies, for present and future players alike.
 ]=]
-Lifecycles.PlayerDied = {
-	Method = 'PlayerDied',
+Lifecycles.HumanoidDied = {
+	Method = 'HumanoidDied',
 	Connect = function (fire)
 		local function watch (player: Player)
 			player.CharacterAdded:Connect(function (character)
