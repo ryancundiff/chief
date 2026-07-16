@@ -293,6 +293,8 @@ describe('built-ins', function ()
 				Lifecycles.PlayerRemoving,
 				Lifecycles.CharacterAdded,
 				Lifecycles.CharacterRemoving,
+				Lifecycles.AppearanceLoaded,
+				Lifecycles.HumanoidDied,
 				Lifecycles.Closing,
 				-- Not implemented by the module, so these never connect -- including PreRender,
 				-- whose client-only signal would error if the opt-in check did not gate it.
@@ -304,6 +306,87 @@ describe('built-ins', function ()
 			:Start()
 
 		expect(eventString()).toBe('')
+	end)
+
+	-- Open Cloud tasks cannot create players (`Instance.new('Player')` needs the WritePlayer
+	-- capability and `Players:CreateLocalPlayer()` needs LocalUser, both denied), so the
+	-- player-driven built-ins can never fire here. These tests drive the same module methods
+	-- through custom lifecycles with real instances, so the handlers and the payload plumbing
+	-- are still exercised end to end.
+	it('dispatches AppearanceLoaded handlers with the player and character', function ()
+		local bindable = Instance.new('BindableEvent')
+
+		Chief.new({ Verbose = false })
+			:AddModule(lifePingA)
+			:AddExtension(Lifecycles.new({ { Method = 'AppearanceLoaded', Connect = bindable.Event } }))
+			:Start()
+
+		local playerStandIn = Instance.new('Folder')
+		playerStandIn.Name = 'PlayerStandIn'
+
+		local character = Instance.new('Model')
+		character.Name = 'Character'
+
+		bindable:Fire(playerStandIn, character)
+		task.wait()
+
+		expect(eventString()).toBe('A.AppearanceLoaded:PlayerStandIn:Character')
+
+		bindable:Destroy()
+	end)
+
+	it('dispatches HumanoidDied handlers when a real humanoid runs out of health', function ()
+		local bindable = Instance.new('BindableEvent')
+
+		Chief.new({ Verbose = false })
+			:AddModule(lifePingA)
+			:AddExtension(Lifecycles.new({ { Method = 'HumanoidDied', Connect = bindable.Event } }))
+			:Start()
+
+		local playerStandIn = Instance.new('Folder')
+		playerStandIn.Name = 'PlayerStandIn'
+
+		local character = Instance.new('Model')
+		character.Name = 'Character'
+
+		local humanoid = Instance.new('Humanoid')
+		humanoid.Parent = character
+		character.Parent = workspace
+
+		-- Humanoid.Died never fires in headless Open Cloud tasks: the humanoid state machine does
+		-- not step, and even ChangeState(Dead) is silently ignored. HealthChanged does fire on
+		-- property writes, so relay the health-reaching-zero moment into the lifecycle with the
+		-- payload the built-in assembles, then actually drain the humanoid rather than firing by hand.
+		humanoid.HealthChanged:Connect(function (health)
+			if health <= 0 then
+				bindable:Fire(playerStandIn, character, humanoid)
+			end
+		end)
+
+		humanoid.Health = 0
+		task.wait()
+		task.wait()
+
+		expect(eventString()).toBe('A.HumanoidDied:PlayerStandIn:Character')
+
+		character:Destroy()
+		bindable:Destroy()
+	end)
+end)
+
+describe('Local', function ()
+	it('errors when a Local lifecycle is accessed on the server', function ()
+		-- The Open Cloud harness is a server, so the client-only guard must reject the access
+		-- itself -- not wait for a module to opt in and trip an assert mid-boot.
+		expect(function ()
+			return Lifecycles.Local.CharacterAdded
+		end).toThrow('BadCall')
+	end)
+
+	it('errors on a misspelled Local lifecycle instead of recursing', function ()
+		expect(function ()
+			return (Lifecycles.Local :: any).CharacterAded
+		end).toThrow('BadCall')
 	end)
 end)
 

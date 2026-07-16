@@ -60,12 +60,28 @@ end
 
 -- Never fires in the Open Cloud harness (no players, and the place only closes after the run);
 -- these exist so wiring the built-ins is exercised end to end.
+function LifePingA.PlayerAdded (_self: any, player: Player)
+	recorder.record(`A.PlayerAdded:{player.Name}`)
+end
+
+function LifePingA.PlayerRemoving (_self: any, player: Player)
+	recorder.record(`A.PlayerRemoving:{player.Name}`)
+end
+
 function LifePingA.CharacterAdded (_self: any, player: Player, character: Model)
 	recorder.record(`A.CharacterAdded:{player.Name}:{character.Name}`)
 end
 
 function LifePingA.CharacterRemoving (_self: any, player: Player, character: Model)
 	recorder.record(`A.CharacterRemoving:{player.Name}:{character.Name}`)
+end
+
+function LifePingA.AppearanceLoaded (_self: any, player: Player, character: Model)
+	recorder.record(`A.AppearanceLoaded:{player.Name}:{character.Name}`)
+end
+
+function LifePingA.HumanoidDied (_self: any, player: Player, character: Model, _humanoid: Humanoid)
+	recorder.record(`A.HumanoidDied:{player.Name}:{character.Name}`)
 end
 
 function LifePingA.Closing (_self: any) end
