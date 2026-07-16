@@ -315,73 +315,80 @@ Lifecycles.CharacterRemoving = {
 	end,
 } :: Lifecycle
 
---[=[
-  Local lifecycles for client-side events.
-]=]
-Lifecycles.Local = {}
+-- The real Local lifecycles. They live outside `Lifecycles.Local` so the proxy below stays
+-- empty and every access funnels through its `__index` guard.
+local localLifecycles: { [string]: Lifecycle } = {}
 
-setmetatable(Lifecycles.Local, {
-	__index = function (lifecycles, key)
-		assert(RunService:IsClient(), 'Local lifecycles are client-only')
-		return lifecycles[key]
+--[=[
+	Local lifecycles for client-side events. Accessing any of them on the server errors immediately, since they connect client-only signals like `Players.LocalPlayer`.
+]=]
+Lifecycles.Local = setmetatable({}, {
+	__index = function (_, key: string): Lifecycle
+		assert(RunService:IsClient(), `BadCall: Lifecycles.Local.{key} is client-only (accessed on the server)`)
+
+		return localLifecycles[key]
 	end,
 })
 
 --[=[
-  Fires `LocalCharacterRemoving(player, character)` whenever the local player's character is about to be removed. Client only.
+	Fires `LocalCharacterAdded(player, character)` whenever the local player's character spawns. Client only.
 ]=]
-Lifecycles.Local.CharacterAdded = {
+localLifecycles.CharacterAdded = {
 	Method = 'LocalCharacterAdded',
 	Connect = function (fire)
-		assert(RunService:IsClient(), 'LocalCharacterAdded lifecycle is client-only')
+		assert(RunService:IsClient(), 'BadCall: LocalCharacterAdded lifecycle is client-only')
 
 		local player = Players.LocalPlayer
-		player.CharacterAdded:Connect(function (character)
+
+		return player.CharacterAdded:Connect(function (character)
 			fire(player, character)
 		end)
 	end,
 } :: Lifecycle
 
 --[=[
-  Fires `LocalCharacterRemoving(player, character)` whenever the local player's character is about to be removed.
+	Fires `LocalCharacterRemoving(player, character)` whenever the local player's character is about to be removed. Client only.
 ]=]
-Lifecycles.Local.CharacterRemoving = {
+localLifecycles.CharacterRemoving = {
 	Method = 'LocalCharacterRemoving',
 	Connect = function (fire)
-		assert(RunService:IsClient(), 'LocalCharacterRemoving lifecycle is client-only')
+		assert(RunService:IsClient(), 'BadCall: LocalCharacterRemoving lifecycle is client-only')
 
 		local player = Players.LocalPlayer
-		player.CharacterRemoving:Connect(function (character)
+
+		return player.CharacterRemoving:Connect(function (character)
 			fire(player, character)
 		end)
 	end,
 } :: Lifecycle
 
 --[=[
-  Fires `LocalAppearanceLoaded(player, character)` whenever the local player's character has finished loading its appearance.
+	Fires `LocalAppearanceLoaded(player, character)` whenever the local player's character has finished loading its appearance. Client only.
 ]=]
-Lifecycles.Local.AppearanceLoaded = {
+localLifecycles.AppearanceLoaded = {
 	Method = 'LocalAppearanceLoaded',
 	Connect = function (fire)
-		assert(RunService:IsClient(), 'AppearanceLoaded lifecycle is client-only')
+		assert(RunService:IsClient(), 'BadCall: LocalAppearanceLoaded lifecycle is client-only')
 
 		local player = Players.LocalPlayer
-		player.CharacterAppearanceLoaded:Connect(function (character)
+
+		return player.CharacterAppearanceLoaded:Connect(function (character)
 			fire(player, character)
 		end)
 	end,
 } :: Lifecycle
 
 --[=[
-  Fires `LocalHumanoidDied(player, character, humanoid)` whenever the local player's character's humanoid dies.
+	Fires `LocalHumanoidDied(player, character, humanoid)` whenever the local player's character's humanoid dies. Client only.
 ]=]
-Lifecycles.Local.HumanoidDied = {
+localLifecycles.HumanoidDied = {
 	Method = 'LocalHumanoidDied',
 	Connect = function (fire)
-		assert(RunService:IsClient(), 'LocalHumanoidDied lifecycle is client-only')
+		assert(RunService:IsClient(), 'BadCall: LocalHumanoidDied lifecycle is client-only')
 
 		local player = Players.LocalPlayer
-		player.CharacterAdded:Connect(function (character)
+
+		return player.CharacterAdded:Connect(function (character)
 			local humanoid = character:WaitForChild('Humanoid', 10) :: Humanoid?
 			if not humanoid then
 				return
