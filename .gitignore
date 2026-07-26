@@ -6,3 +6,5 @@ CLAUDE.md
 globalTypes.d.luau
 sourcemap.json
 .env
+lpm.lock
+packages/

@@ -4,7 +4,9 @@
 local Players = game:GetService('Players')
 local RunService = game:GetService('RunService')
 
-local Chief = require('./roblox_packages/core')
+local Chief = if script.Parent:FindFirstChild('roblox_packages')
+	then require('./roblox_packages/core')
+	else require('./packages/shared/core')
 
 --[=[
 	The Lifecycles extension: binds events to module methods.

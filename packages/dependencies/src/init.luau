@@ -1,6 +1,6 @@
---!strict
-
-local Chief = require('./roblox_packages/core')
+local Chief = if script.Parent:FindFirstChild('roblox_packages')
+	then require('./roblox_packages/core')
+	else require('./packages/shared/core')
 
 --[=[
 	The Dependencies extension: topological dependency injection for Chief.
