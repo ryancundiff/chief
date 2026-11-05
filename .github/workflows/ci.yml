@@ -80,7 +80,9 @@ jobs:
       - name: Build test place
         run: rojo build test.project.json --output test-place.rbxl
       # Lest reads the place ids from lest.toml only. This step copies them from the repository variables.
+      # A pull request from a fork gets no variables, and Lest then names the missing id.
       - name: Point Lest at the test place
+        if: vars.ROBLOX_TEST_UNIVERSE_ID != ''
         run: printf '\n[suites.chief.place]\nuniverse_id = %s\nplace_id = %s\n' "$ROBLOX_UNIVERSE_ID" "$ROBLOX_PLACE_ID" >> lest.toml
         env:
           ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_TEST_UNIVERSE_ID }}
