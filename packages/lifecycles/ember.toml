@@ -1,0 +1,19 @@
+[package]
+name = "chief/lifecycles"
+version = "0.3.0"
+description = "The Lifecycles extension for Chief: binds events to module methods."
+authors = ["ryancundiff"]
+repository = "https://github.com/ryancundiff/chief"
+license = "MIT"
+
+[target]
+environment = "roblox"
+main = "src/init.luau"
+includes = ["src", "LICENSE", "README.md", "ember.toml", "pesde.toml"]
+
+[dependencies]
+core = { workspace = "chief/core", version = "^" }
+
+# pesde links dependencies into roblox_packages, so embr does too, and src requires one path.
+[config]
+roblox-packages-out = "roblox_packages"

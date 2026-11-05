@@ -3,12 +3,8 @@
 -- Roblox services.
 local CollectionService = game:GetService('CollectionService')
 
-local Bin = if script.Parent:FindFirstChild('roblox_packages')
-	then require('./roblox_packages/bin')
-	else require('./packages/shared/bin')
-local Chief = if script.Parent:FindFirstChild('roblox_packages')
-	then require('./roblox_packages/core')
-	else require('./packages/shared/core')
+local Bin = require('./roblox_packages/bin')
+local Chief = require('./roblox_packages/core')
 
 --[=[
 	The Traits extension: binds behavior to Roblox instances through CollectionService tags.
