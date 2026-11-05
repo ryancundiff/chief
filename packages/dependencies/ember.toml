@@ -1,0 +1,19 @@
+[package]
+name = "chief/dependencies"
+version = "0.2.0"
+description = "The Dependencies extension for Chief: topological dependency injection."
+authors = ["ryancundiff"]
+repository = "https://github.com/ryancundiff/chief"
+license = "MIT"
+
+[target]
+environment = "roblox"
+main = "src/init.luau"
+includes = ["src", "LICENSE", "README.md", "ember.toml", "pesde.toml"]
+
+[dependencies]
+core = { workspace = "chief/core", version = "^" }
+
+# pesde links dependencies into roblox_packages, so embr does too, and src requires one path.
+[config]
+roblox-packages-out = "roblox_packages"

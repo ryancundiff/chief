@@ -1,0 +1,16 @@
+[package]
+name = "chief/root"
+version = "0.0.0"
+private = true
+
+[target]
+environment = "roblox"
+workspace = ["packages/*"]
+
+[tools]
+selene = "kampfkarren/selene@0.31.0"
+stylua = "johnnymorganz/stylua@2.5.2"
+pesde = "pesde-pkg/pesde@0.7.3+registry.0.2.3"
+luau-lsp = "johnnymorganz/luau-lsp@1.68.1"
+rojo = "rojo-rbx/rojo@7.7.0"
+lest = "lest-luau/lest@0.6.1"

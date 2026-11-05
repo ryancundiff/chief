@@ -1,11 +1,11 @@
 --!strict
 
 local Bin = require('../packages/bin/src')
-local Runner = require('./Runner')
+local Lest = require('@lest')
 
-local describe = Runner.describe
-local expect = Runner.expect
-local it = Runner.it
+local describe = Lest.describe
+local expect = Lest.expect
+local it = Lest.it
 
 describe('Add', function ()
 	it('returns the item, so adds can wrap assignments', function ()
@@ -120,4 +120,4 @@ describe('Empty', function ()
 	end)
 end)
 
-return {}
+return nil

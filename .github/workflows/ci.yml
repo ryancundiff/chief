@@ -13,12 +13,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Install tools with Rokit
-        uses: CompeyDev/setup-rokit@v0.2.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # Ember installs the tools that ember.toml pins. The anchor lets every job share this step.
+      - &install-tools
+        name: Install tools with Ember
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/embr" https://github.com/ember-luau/ember/releases/download/v0.13.0/embr-linux-x86_64
+          chmod +x "$RUNNER_TEMP/embr"
+          "$RUNNER_TEMP/embr" self install
+          echo "$HOME/.ember/bin" >> "$GITHUB_PATH"
+          "$HOME/.ember/bin/embr" install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Lint with selene
-        run: selene packages tests tasks
+        run: selene packages tests
 
   format:
     name: Check formatting with StyLua
@@ -26,12 +33,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Install tools with Rokit
-        uses: CompeyDev/setup-rokit@v0.2.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - *install-tools
       - name: Check formatting with StyLua
-        run: stylua --check packages tests tasks
+        run: stylua --check packages tests
 
   typecheck:
     name: Typecheck with luau-lsp
@@ -39,22 +43,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Install tools with Rokit
-        uses: CompeyDev/setup-rokit@v0.2.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-      # Each package requires its dependencies from a sibling roblox_packages/, which pesde creates.
-      - name: Install packages
-        run: pesde install
-      # Pinned to the luau-lsp version in rokit.toml; bump both together.
+      # `embr install` also links each package's dependencies into its roblox_packages/.
+      - *install-tools
+      # Lest writes its framework to .lest/core, the target of the `@lest` alias, before it runs.
+      # With no API key the run stops there, so the step only checks that the files exist.
+      - name: Write the Lest framework
+        run: lest || test -d .lest/core
+      # Pinned to the luau-lsp version in ember.toml; bump both together.
       - name: Download Roblox global types
         run: curl -fsSL -o globalTypes.d.luau https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/1.68.1/scripts/globalTypes.d.luau
       # tests/ requires by instance path, which only resolves through the Rojo tree.
       - name: Generate sourcemap
         run: rojo sourcemap test.project.json --output sourcemap.json
       # LuauSolverV2 is required: packages/traits derives its types with `type function`, which the old solver cannot parse.
-      # Vendored dependencies are ignored -- pesde links workspace `core` into each dependent, so one
-      # error there would otherwise be reported once per dependent.
+      # roblox_packages/ only holds link files into the workspace, and .lest/ is the Lest framework.
       - name: Typecheck with luau-lsp
         run: |
           luau-lsp analyze \
@@ -62,10 +64,11 @@ jobs:
             --flag:LuauSolverV2=true \
             --sourcemap=sourcemap.json \
             --ignore="**/roblox_packages/**" \
-            packages/*/src/init.luau tasks/*.luau tests/*.luau tests/Helpers/*.luau tests/Fixtures/*.luau
+            --ignore=".lest/**" \
+            packages/*/src/init.luau tests/*.luau tests/Helpers/*.luau tests/Fixtures/*.luau
 
   tests:
-    name: Run tests via Open Cloud
+    name: Run tests with Lest
     runs-on: ubuntu-latest
     concurrency:
       group: luau-execution
@@ -73,17 +76,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Install tools with Rokit
-        uses: CompeyDev/setup-rokit@v0.2.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install packages
-        run: pesde install
+      - *install-tools
       - name: Build test place
         run: rojo build test.project.json --output test-place.rbxl
-      - name: Upload place and run tests
-        run: python3 scripts/upload_and_run_task.py test-place.rbxl tasks/run-tests.luau
+      # Lest reads the place ids from lest.toml only. This step copies them from the repository variables.
+      - name: Point Lest at the test place
+        run: printf '\n[suites.chief.place]\nuniverse_id = %s\nplace_id = %s\n' "$ROBLOX_UNIVERSE_ID" "$ROBLOX_PLACE_ID" >> lest.toml
         env:
-          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
           ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_TEST_UNIVERSE_ID }}
           ROBLOX_PLACE_ID: ${{ vars.ROBLOX_TEST_PLACE_ID }}
+      - name: Run tests with Lest
+        run: lest
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}

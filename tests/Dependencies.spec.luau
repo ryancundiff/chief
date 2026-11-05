@@ -1,16 +1,16 @@
 --!strict
 
-local tests = script.Parent
+local tests = game:GetService('ServerStorage').ChiefTests.tests
 
 local Chief = require('../packages/core/src')
 local Dependencies = require('../packages/dependencies/src')
-local Runner = require('./Runner')
+local Lest = require('@lest')
 local recorder = require('./Helpers/Recorder')
 
-local beforeEach = Runner.beforeEach
-local describe = Runner.describe
-local expect = Runner.expect
-local it = Runner.it
+local beforeEach = Lest.beforeEach
+local describe = Lest.describe
+local expect = Lest.expect
+local it = Lest.it
 
 local fixtures = tests.Fixtures
 local depCycleOne = fixtures.DepCycleOne
@@ -101,4 +101,4 @@ describe('injection', function ()
 	end)
 end)
 
-return {}
+return nil

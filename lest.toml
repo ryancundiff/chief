@@ -1,0 +1,8 @@
+# The specs touch Instances and services, so they run in a real place through Open Cloud.
+[suites.chief]
+include = ["tests/**/*.spec.luau"]
+backend = "cloud"
+
+[place]
+file = "test-place.rbxl"
+rojo = "test.project.json"

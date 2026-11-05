@@ -1,0 +1,12 @@
+[package]
+name = "chief/bin"
+version = "0.2.0"
+description = "A small, strictly typed cleanup container for Roblox: connections, instances, threads, and functions, emptied in reverse insertion order."
+authors = ["ryancundiff"]
+repository = "https://github.com/ryancundiff/chief"
+license = "MIT"
+
+[target]
+environment = "roblox"
+main = "src/init.luau"
+includes = ["src", "LICENSE", "README.md", "ember.toml", "pesde.toml"]

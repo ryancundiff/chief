@@ -1,0 +1,20 @@
+[package]
+name = "chief/traits"
+version = "0.2.0"
+description = "The Traits extension for Chief: binds behavior to Roblox instances through CollectionService tags."
+authors = ["ryancundiff"]
+repository = "https://github.com/ryancundiff/chief"
+license = "MIT"
+
+[target]
+environment = "roblox"
+main = "src/init.luau"
+includes = ["src", "LICENSE", "README.md", "ember.toml", "pesde.toml"]
+
+[dependencies]
+bin = { workspace = "chief/bin", version = "^" }
+core = { workspace = "chief/core", version = "^" }
+
+# pesde links dependencies into roblox_packages, so embr does too, and src requires one path.
+[config]
+roblox-packages-out = "roblox_packages"
